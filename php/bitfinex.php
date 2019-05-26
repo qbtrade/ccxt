@@ -54,7 +54,11 @@ class bitfinex extends Exchange {
             ),
             'urls' => array (
                 'logo' => 'https://user-images.githubusercontent.com/1294454/27766244-e328a50c-5ed2-11e7-947b-041416579bb3.jpg',
-                'api' => 'https://api.bitfinex.com',
+                'api' => array (
+                    'v2' => 'https://api-pub.bitfinex.com', // https://github.com/ccxt/ccxt/issues/5109
+                    'public' => 'https://api.bitfinex.com',
+                    'private' => 'https://api.bitfinex.com',
+                ),
                 'www' => 'https://www.bitfinex.com',
                 'doc' => array (
                     'https://docs.bitfinex.com/v1/docs',
@@ -62,8 +66,26 @@ class bitfinex extends Exchange {
                 ),
             ),
             'api' => array (
+                // v2 symbol ids require a 't' prefix
+                // just the public part of it (use bitfinex2 for everything else)
                 'v2' => array (
                     'get' => array (
+                        'platform/status',
+                        'tickers',
+                        'ticker/{symbol}',
+                        'trades/{symbol}/hist',
+                        'book/{symbol}/{precision}',
+                        'book/{symbol}/P0',
+                        'book/{symbol}/P1',
+                        'book/{symbol}/P2',
+                        'book/{symbol}/P3',
+                        'book/{symbol}/R0',
+                        'stats1/{key}:{size}:{symbol}:{side}/{section}',
+                        'stats1/{key}:{size}:{symbol}/{section}',
+                        'stats1/{key}:{size}:{symbol}:long/last',
+                        'stats1/{key}:{size}:{symbol}:long/hist',
+                        'stats1/{key}:{size}:{symbol}:short/last',
+                        'stats1/{key}:{size}:{symbol}:short/hist',
                         'candles/trade:{timeframe}:{symbol}/{section}',
                         'candles/trade:{timeframe}:{symbol}/last',
                         'candles/trade:{timeframe}:{symbol}/hist',
@@ -80,7 +102,6 @@ class bitfinex extends Exchange {
                         'symbols',
                         'symbols_details',
                         'tickers',
-                        'today',
                         'trades/{symbol}',
                     ),
                 ),
@@ -256,6 +277,7 @@ class bitfinex extends Exchange {
                 'ABS' => 'ABYSS',
                 'AIO' => 'AION',
                 'ATM' => 'ATMI',
+                'ATO' => 'ATOM', // https://github.com/ccxt/ccxt/issues/5118
                 'BAB' => 'BCH',
                 'CTX' => 'CTXC',
                 'DAD' => 'DADI',
@@ -439,11 +461,16 @@ class bitfinex extends Exchange {
     }
 
     public function fetch_markets ($params = array ()) {
-        $markets = $this->publicGetSymbolsDetails ();
+        $ids = $this->publicGetSymbols ();
+        $details = $this->publicGetSymbolsDetails ();
         $result = array ();
-        for ($p = 0; $p < count ($markets); $p++) {
-            $market = $markets[$p];
-            $id = strtoupper ($market['pair']);
+        for ($i = 0; $i < count ($details); $i++) {
+            $market = $details[$i];
+            $id = $this->safe_string($market, 'pair');
+            if (!$this->in_array($id, $ids)) {
+                continue;
+            }
+            $id = strtoupper ($id);
             $baseId = mb_substr ($id, 0, 3);
             $quoteId = mb_substr ($id, 3, 6);
             $base = $this->common_currency_code($baseId);
@@ -1013,7 +1040,7 @@ class bitfinex extends Exchange {
             $request = '/' . $this->version . $request;
         }
         $query = $this->omit ($params, $this->extract_params($path));
-        $url = $this->urls['api'] . $request;
+        $url = $this->urls['api'][$api] . $request;
         if (($api === 'public') || (mb_strpos ($path, '/hist') !== false)) {
             if ($query) {
                 $suffix = '?' . $this->urlencode ($query);
