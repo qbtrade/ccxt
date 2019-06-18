@@ -39,11 +39,11 @@ class dx extends Exchange {
                 'fetchMarkets' => true,
                 'fetchMyTrades' => false,
                 'fetchOHLCV' => true,
-                'fetchOpenOrders' => false,
+                'fetchOpenOrders' => true,
                 'fetchOrder' => false,
-                'fetchOrderBook' => false,
+                'fetchOrderBook' => true,
                 'fetchOrderBooks' => false,
-                'fetchOrders' => true,
+                'fetchOrders' => false,
                 'fetchTicker' => true,
                 'fetchTickers' => false,
                 'fetchTrades' => false,
@@ -117,6 +117,7 @@ class dx extends Exchange {
                         'AssetManagement.GetTicker',
                         'AssetManagement.History',
                         'Authorization.LoginByToken',
+                        'OrderManagement.GetOrderBook',
                     ),
                 ),
                 'private' => array (
@@ -149,9 +150,9 @@ class dx extends Exchange {
     public function number_to_object ($number) {
         $string = $this->decimal_to_precision($number, ROUND, 10, DECIMAL_PLACES, NO_PADDING);
         $decimals = $this->precision_from_string($string);
-        $valueStr = str_replace ('.', '', $string);
+        $valueStr = str_replace('.', '', $string);
         return array (
-            'value' => $this->safe_integer(array ( 'a' => $valueStr ), 'a', null),
+            'value' => $this->safe_integer(array( 'a' => $valueStr ), 'a', null),
             'decimals' => $decimals,
         );
     }
@@ -167,14 +168,14 @@ class dx extends Exchange {
     public function fetch_markets ($params = array ()) {
         $markets = $this->publicPostAssetManagementGetInstruments ($params);
         $instruments = $markets['result']['instruments'];
-        $result = array ();
+        $result = array();
         for ($i = 0; $i < count ($instruments); $i++) {
             $instrument = $instruments[$i];
             $id = $this->safe_string($instrument, 'id');
             $numericId = $this->safe_integer($instrument, 'id');
-            $asset = $this->safe_value($instrument, 'asset', array ());
+            $asset = $this->safe_value($instrument, 'asset', array());
             $fullName = $this->safe_string($asset, 'fullName');
-            list ($base, $quote) = explode ('/', $fullName);
+            list($base, $quote) = explode('/', $fullName);
             $amountPrecision = 0;
             if ($instrument['meQuantityMultiplier'] !== 0) {
                 $amountPrecision = log10 ($instrument['meQuantityMultiplier']);
@@ -221,11 +222,11 @@ class dx extends Exchange {
     }
 
     public function parse_ticker ($ticker, $market = null) {
-        $tickerKeys = is_array ($ticker) ? array_keys ($ticker) : array ();
+        $tickerKeys = is_array($ticker) ? array_keys($ticker) : array();
         // Python needs an integer to access $this->markets_by_id
         // and a string to access the $ticker object
         $tickerKey = $tickerKeys[0];
-        $instrumentId = $this->safe_integer(array ( 'a' => $tickerKey ), 'a');
+        $instrumentId = $this->safe_integer(array( 'a' => $tickerKey ), 'a');
         $ticker = $ticker[$tickerKey];
         $symbol = $this->markets_by_id[$instrumentId]['symbol'];
         $last = $this->safe_float($ticker, 'last');
@@ -327,17 +328,11 @@ class dx extends Exchange {
         return $this->parse_orders($response['result']['ordersForHistory'], $market, $since, $limit);
     }
 
-    public function fetch_orders ($symbol = null, $since = null, $limit = null, $params = array ()) {
-        $openOrders = $this->fetch_open_orders($symbol, $since, $limit, $params);
-        $orders = $this->fetch_closed_orders ($symbol, $since, $limit, $params);
-        return $this->array_concat($orders, $openOrders);
-    }
-
     public function parse_order ($order, $market = null) {
         $orderStatusMap = array (
             '1' => 'open',
         );
-        $innerOrder = $this->safe_value_2($order, 'order', null);
+        $innerOrder = $this->safe_value($order, 'order', null);
         if ($innerOrder !== null) {
             // fetchClosedOrders returns orders in an extra object
             $order = $innerOrder;
@@ -352,10 +347,15 @@ class dx extends Exchange {
         }
         $status = null;
         $orderStatus = $this->safe_string($order, 'status', null);
-        if (is_array ($orderStatusMap) && array_key_exists ($orderStatus, $orderStatusMap)) {
+        if (is_array($orderStatusMap) && array_key_exists($orderStatus, $orderStatusMap)) {
             $status = $orderStatusMap[$orderStatus];
         }
-        $symbol = $this->markets_by_id[$order['instrumentId']]['symbol'];
+        $marketId = $this->safe_string($order, 'instrumentId');
+        $symbol = null;
+        if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
+            $market = $this->markets_by_id[$marketId];
+            $symbol = $market['symbol'];
+        }
         $orderType = 'limit';
         if ($order['orderType'] === $this->options['orderTypes']['market']) {
             $orderType = 'market';
@@ -363,9 +363,10 @@ class dx extends Exchange {
         $timestamp = $order['time'] * 1000;
         $quantity = $this->object_to_number ($order['quantity']);
         $filledQuantity = $this->object_to_number ($order['filledQuantity']);
-        $result = array (
+        $id = $this->safe_string($order, 'externalOrderId');
+        return array (
             'info' => $order,
-            'id' => $order['externalOrderId'],
+            'id' => $id,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601 ($timestamp),
             'lastTradeTimestamp' => null,
@@ -380,7 +381,23 @@ class dx extends Exchange {
             'status' => $status,
             'fee' => null,
         );
-        return $result;
+    }
+
+    public function parse_bid_ask ($bidask, $priceKey = 0, $amountKey = 1) {
+        $price = $this->object_to_number ($bidask[$priceKey]);
+        $amount = $this->object_to_number ($bidask[$amountKey]);
+        return array ( $price, $amount );
+    }
+
+    public function fetch_order_book ($symbol, $limit = null, $params = array ()) {
+        $this->load_markets();
+        $market = $this->market ($symbol);
+        $request = array (
+            'instrumentId' => $market['numericId'],
+        );
+        $response = $this->publicPostOrderManagementGetOrderBook (array_merge ($request, $params));
+        $orderbook = $this->safe_value($response, 'result');
+        return $this->parse_order_book($orderbook, null, 'sell', 'buy', 'price', 'qty');
     }
 
     public function sign_in ($params = array ()) {
@@ -399,14 +416,14 @@ class dx extends Exchange {
     public function fetch_balance ($params = array ()) {
         $this->load_markets();
         $response = $this->privatePostBalanceGet ($params);
-        $result = array ( 'info' => $response );
+        $result = array( 'info' => $response );
         $balances = $this->safe_value($response['result'], 'balance');
-        $ids = is_array ($balances) ? array_keys ($balances) : array ();
+        $ids = is_array($balances) ? array_keys($balances) : array();
         for ($i = 0; $i < count ($ids); $i++) {
             $id = $ids[$i];
             $balance = $balances[$id];
             $code = null;
-            if (is_array ($this->currencies_by_id) && array_key_exists ($id, $this->currencies_by_id)) {
+            if (is_array($this->currencies_by_id) && array_key_exists($id, $this->currencies_by_id)) {
                 $code = $this->currencies_by_id[$id]['code'];
             }
             $account = array (
@@ -446,7 +463,7 @@ class dx extends Exchange {
     }
 
     public function cancel_order ($id, $symbol = null, $params = array ()) {
-        $request = array ( 'externalOrderId' => $id );
+        $request = array( 'externalOrderId' => $id );
         return $this->privatePostOrderManagementCancel (array_merge ($request, $params));
     }
 
@@ -456,7 +473,7 @@ class dx extends Exchange {
             if ($arrayLength === 0) {
                 // In PHP $params = array () causes this to fail, because
                 // the API requests an object, not an array, even if it is empty
-                $params = array ( '__associative' => true );
+                $params = array( '__associative' => true );
             }
         }
         $parameters = array (
@@ -466,27 +483,28 @@ class dx extends Exchange {
             'params' => [$params],
         );
         $url = $this->urls['api'];
-        $headers = array ( 'Content-Type' => 'application/json-rpc' );
+        $headers = array( 'Content-Type' => 'application/json-rpc' );
         if ($method === 'GET') {
-            if ($parameters)
+            if ($parameters) {
                 $url .= '?' . $this->urlencode ($parameters);
+            }
         } else {
             $body = $this->json ($parameters);
         }
         if ($api === 'private') {
             $token = $this->safe_string($this->options, 'accessToken');
             if ($token === null) {
-                throw new AuthenticationError ($this->id . ' ' . $path . ' endpoint requires a prior call to signIn() method');
+                throw new AuthenticationError($this->id . ' ' . $path . ' endpoint requires a prior call to signIn() method');
             }
             $expires = $this->safe_integer($this->options, 'expires');
             if ($expires !== null) {
                 if ($this->milliseconds () >= $expires) {
-                    throw new AuthenticationError ($this->id . ' accessToken expired, call signIn() method');
+                    throw new AuthenticationError($this->id . ' accessToken expired, call signIn() method');
                 }
             }
             $headers['Authorization'] = $token;
         }
-        return array ( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
+        return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
     }
 
     public function handle_errors ($httpCode, $reason, $url, $method, $headers, $body, $response) {
@@ -497,15 +515,15 @@ class dx extends Exchange {
         if ($error) {
             $feedback = $this->id . ' ' . $this->json ($response);
             $exact = $this->exceptions['exact'];
-            if (is_array ($exact) && array_key_exists ($error, $exact)) {
-                throw new $exact[$error] ($feedback);
+            if (is_array($exact) && array_key_exists($error, $exact)) {
+                throw new $exact[$error]($feedback);
             }
             $broad = $this->exceptions['broad'];
             $broadKey = $this->findBroadlyMatchedKey ($broad, $error);
             if ($broadKey !== null) {
-                throw new $broad[$broadKey] ($feedback);
+                throw new $broad[$broadKey]($feedback);
             }
-            throw new ExchangeError ($feedback); // unknown $error
+            throw new ExchangeError($feedback); // unknown $error
         }
     }
 }

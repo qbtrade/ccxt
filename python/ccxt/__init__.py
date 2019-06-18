@@ -22,7 +22,7 @@
 
 # ----------------------------------------------------------------------------
 
-__version__ = '1.18.575'
+__version__ = '1.18.727'
 
 # ----------------------------------------------------------------------------
 
@@ -33,6 +33,7 @@ from ccxt.base.decimal_to_precision import TRUNCATE              # noqa: F401
 from ccxt.base.decimal_to_precision import ROUND                 # noqa: F401
 from ccxt.base.decimal_to_precision import DECIMAL_PLACES        # noqa: F401
 from ccxt.base.decimal_to_precision import SIGNIFICANT_DIGITS    # noqa: F401
+from ccxt.base.decimal_to_precision import TICK_SIZE             # noqa: F401
 from ccxt.base.decimal_to_precision import NO_PADDING            # noqa: F401
 from ccxt.base.decimal_to_precision import PAD_WITH_ZERO         # noqa: F401
 
@@ -132,7 +133,6 @@ from ccxt.coolcoin import coolcoin                          # noqa: F401
 from ccxt.coss import coss                                  # noqa: F401
 from ccxt.crex24 import crex24                              # noqa: F401
 from ccxt.crypton import crypton                            # noqa: F401
-from ccxt.cryptopia import cryptopia                        # noqa: F401
 from ccxt.deribit import deribit                            # noqa: F401
 from ccxt.dsx import dsx                                    # noqa: F401
 from ccxt.dx import dx                                      # noqa: F401
@@ -176,13 +176,13 @@ from ccxt.mercado import mercado                            # noqa: F401
 from ccxt.mixcoins import mixcoins                          # noqa: F401
 from ccxt.negociecoins import negociecoins                  # noqa: F401
 from ccxt.nova import nova                                  # noqa: F401
+from ccxt.oceanex import oceanex                            # noqa: F401
 from ccxt.okcoincny import okcoincny                        # noqa: F401
 from ccxt.okcoinusd import okcoinusd                        # noqa: F401
 from ccxt.okex import okex                                  # noqa: F401
 from ccxt.okex3 import okex3                                # noqa: F401
 from ccxt.paymium import paymium                            # noqa: F401
 from ccxt.poloniex import poloniex                          # noqa: F401
-from ccxt.quadrigacx import quadrigacx                      # noqa: F401
 from ccxt.rightbtc import rightbtc                          # noqa: F401
 from ccxt.southxchange import southxchange                  # noqa: F401
 from ccxt.stronghold import stronghold                      # noqa: F401
@@ -271,7 +271,6 @@ exchanges = [
     'coss',
     'crex24',
     'crypton',
-    'cryptopia',
     'deribit',
     'dsx',
     'dx',
@@ -315,13 +314,13 @@ exchanges = [
     'mixcoins',
     'negociecoins',
     'nova',
+    'oceanex',
     'okcoincny',
     'okcoinusd',
     'okex',
     'okex3',
     'paymium',
     'poloniex',
-    'quadrigacx',
     'rightbtc',
     'southxchange',
     'stronghold',
